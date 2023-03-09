@@ -59,39 +59,38 @@ def _put_trans_data(transCmd, parameters, data, noPad=False):
 	# have to init offset before calling len()
 	transCmd['Parameters']['ParameterOffset'] = 0
 	transCmd['Parameters']['DataOffset'] = 0
-	
+
 	# SMB header: 32 bytes
 	# WordCount: 1 bytes
 	# ByteCount: 2 bytes
 	# Note: Setup length is included when len(param) is called
 	offset = 32 + 1 + len(transCmd['Parameters']) + 2
-	
 	transData = ''
 	if len(parameters):
 		padLen = 0 if noPad else (4 - offset % 4 ) % 4
 		transCmd['Parameters']['ParameterOffset'] = offset + padLen
 		transData = ('\x00' * padLen) + parameters
 		offset += padLen + len(parameters)
-	
+
 	if len(data):
 		padLen = 0 if noPad else (4 - offset % 4 ) % 4
 		transCmd['Parameters']['DataOffset'] = offset + padLen
 		transData += ('\x00' * padLen) + data
-	
+
 	transCmd['Data'] = transData
-	
+
 
 origin_NewSMBPacket_addCommand = getattr(smb.NewSMBPacket, "addCommand")
 login_MaxBufferSize = 61440
 def NewSMBPacket_addCommand_hook_login(self, command):
 	# restore NewSMBPacket.addCommand
 	setattr(smb.NewSMBPacket, "addCommand", origin_NewSMBPacket_addCommand)
-	
+
 	if isinstance(command['Parameters'], smb.SMBSessionSetupAndX_Extended_Parameters):
 		command['Parameters']['MaxBufferSize'] = login_MaxBufferSize
 	elif isinstance(command['Parameters'], smb.SMBSessionSetupAndX_Parameters):
 		command['Parameters']['MaxBuffer'] = login_MaxBufferSize
-	
+
 	# call original one
 	origin_NewSMBPacket_addCommand(self, command)
 
@@ -182,7 +181,7 @@ class MYSMB(smb.SMB):
 	def send_echo(self, data):
 		pkt = smb.NewSMBPacket()
 		pkt['Tid'] = self._default_tid
-		
+
 		transCommand = smb.SMBCommand(smb.SMB.SMB_COM_ECHO)
 		transCommand['Parameters'] = smb.SMBEcho_Parameters()
 		transCommand['Data'] = smb.SMBEcho_Data()
@@ -204,14 +203,14 @@ class MYSMB(smb.SMB):
 		writeAndX['Parameters']['DataLength'] = len(data)
 		writeAndX['Parameters']['DataOffset'] = 32 + len(writeAndX['Parameters']) + 1 + 2 + 1 # WordCount(1), ByteCount(2), Padding(1)
 		writeAndX['Data'] = '\x00' + data  # pad 1 byte
-		
+
 		self.send_raw(self.create_smb_packet(writeAndX, mid, pid, tid))
 		return self.recvSMB()
 
 	def create_smb_packet(self, smbReq, mid=None, pid=None, tid=None):
 		if mid is None:
 			mid = self.next_mid()
-		
+
 		pkt = smb.NewSMBPacket()
 		pkt.addCommand(smbReq)
 		pkt['Tid'] = self._default_tid if tid is None else tid
@@ -221,13 +220,13 @@ class MYSMB(smb.SMB):
 		flags1, flags2 = self.get_flags()
 		pkt['Flags1'] = flags1
 		pkt['Flags2'] = self._pkt_flags2 if self._pkt_flags2 != 0 else flags2
-		
+
 		if self._SignatureEnabled:
 			pkt['Flags2'] |= smb.SMB.FLAGS2_SMB_SECURITY_SIGNATURE
 			self.signSMB(pkt, self._SigningSessionKey, self._SigningChallengeResponse)
-			
-		req = str(pkt)
-		return '\x00'*2 + pack('>H', len(req)) + req  # assume length is <65536
+
+		req = pkt.getData()
+		return b'\x00'*2 + pack('>H', len(req)) + req  # assume length is <65536
 
 	def send_raw(self, data):
 		self.get_socket().send(data)
@@ -271,7 +270,7 @@ class MYSMB(smb.SMB):
 		transCmd['Parameters']['ParameterDisplacement'] = paramDisplacement
 		transCmd['Parameters']['DataCount'] = len(data)
 		transCmd['Parameters']['DataDisplacement'] = dataDisplacement
-		
+
 		_put_trans_data(transCmd, param, data, noPad)
 		return self.create_smb_packet(transCmd, mid, pid, tid)
 
@@ -317,7 +316,7 @@ class MYSMB(smb.SMB):
 		transCmd['Parameters']['ParameterDisplacement'] = paramDisplacement
 		transCmd['Parameters']['DataCount'] = len(data)
 		transCmd['Parameters']['DataDisplacement'] = dataDisplacement
-		
+
 		_put_trans_data(transCmd, param, data, noPad)
 		return self.create_smb_packet(transCmd, mid, pid, tid)
 
